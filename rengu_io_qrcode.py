@@ -1,13 +1,14 @@
 from io import TextIOBase
 from subprocess import PIPE, Popen
 
-from rengu import BASEURL
 from rengu.io import RenguOutput, RenguOutputError, with_templating
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing, String
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
+
+from rengu import BASEURL
 
 
 class RenguOutputQrcode(RenguOutput):
