@@ -1,37 +1,38 @@
-from subprocess import Popen, PIPE
-from uuid import UUID
+from io import TextIOBase
+from subprocess import PIPE, Popen
 
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
+from rengu import BASEURL
+from rengu.io import RenguOutput, RenguOutputError, with_templating
+from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing, String
-from reportlab.graphics import renderPDF
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 
-from rengu.io import RenguOutput, with_templating
 
 class RenguOutputQrcode(RenguOutput):
+    def __init__(self, arg: str, fd: TextIOBase = None):
 
-    def __init__(self, handler=None, fd=None):
-        self._fd = fd
+        super().__init__(arg, fd)
 
-        args = handler.split(":")
-
-        if len(args) > 1:
-            fname = args[1]
-            if "{" in fname:
-                self._per_instance = fname
-            if fname == "LPR":
-                self._fd = Popen("/usr/bin/lpr", stdin=PIPE).stdin
-            else:
-                self._fd = open(fname, "wb")
+        for x in self.extra:
+            if x.startswith("print"):
+                if "=" in x:
+                    printer = x.split("=", 1)[1]
+                    self.fd = Popen(["/usr/bin/lpr", "-P", printer], stdin=PIPE).stdin
+                else:
+                    self.fd = Popen("/usr/bin/lpr", stdin=PIPE).stdin
 
     @with_templating
-    def __call__(self, obj: UUID | dict):
+    def __call__(self, obj: dict):
 
-        if self._per_instance:
-            self._fd = open(self._per_instance.format(**obj), "wb")
+        if "b" not in self.fd.mode:
+            self.fd = open(self.fd.name, "wb")
 
-        uid = obj.get("ID", "ffffffff-ffff-ffff-ffff-ffffffffffff")
+        uid = obj.get("ID")
+        if not uid:
+            raise RenguOutputError("Invalid Rengu object")
+
         title = obj.get("Title", "")
         by = obj.get("By", "")
         if isinstance(by, list):
@@ -39,10 +40,10 @@ class RenguOutputQrcode(RenguOutput):
         if not by:
             by = ""
 
-        c = canvas.Canvas(self._fd)
+        c = canvas.Canvas(self.fd)
         c.setPageSize((2.25 * inch, 1.25 * inch))
 
-        qr_code = qr.QrCodeWidget(BASEURL + uid)
+        qr_code = qr.QrCodeWidget(f"{BASEURL}/{uid}")
         d1 = Drawing(0, 0)
         d1.add(qr_code)
         renderPDF.draw(d1, c, 0, 0)
@@ -61,5 +62,3 @@ class RenguOutputQrcode(RenguOutput):
             c.save()
         except TypeError:
             print("# Aborting QRCode because output stream was not a bytestream")
-
-
